@@ -200,8 +200,11 @@ create_image(Widget w, XtPointer client_data, XtPointer call_data)
 
   acorner = .26;
   bcorner = 0;
-
   extent = .01;
+
+  acorner = -2.0;
+  bcorner = -2.0;
+  extent = 4.0;
 
   gap = extent / size;
 
