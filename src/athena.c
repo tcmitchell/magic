@@ -74,7 +74,7 @@ char *colors[] = {
 
 enum {
   NUM_COLORS = 10,
-  WINDOW_SIZE = 100,
+  WINDOW_SIZE = 700,
 };
 
 typedef struct
@@ -192,11 +192,9 @@ create_image(Widget w, XtPointer client_data, XtPointer call_data)
   complex_t extent;
   complex_t gap;
 
-  int **pic;
-
   int size = WINDOW_SIZE;
-
-  pic = make_pic(size);
+  int pix_value;
+  int color_value;
 
   acorner = .26;
   bcorner = 0;
@@ -210,35 +208,39 @@ create_image(Widget w, XtPointer client_data, XtPointer call_data)
 
   for (i=0; i<size; i++)
     {
-      printf("computing row %d\n", i);
+      if ( (i % 100) == 0) printf("computing row %d\n", i);
+
       for (j=0; j<size; j++)
 	{
 	  c.r = (gap * i) + acorner;
 	  c.i = (gap * j) + bcorner;
-	  pic[i][j] = compute_value(&c);
-	}
-    }
+	  pix_value = compute_value(&c);
+	  color_value = pix_value/100;
 
-  for (i=0; i<size; i++)
-    {
-      printf("drawing row %d\n", i);
+	  /* Subdivide here.  The bulk of the points will have a value
+	     less than 100 (pix_value == 0).  Give colors based on
+	     (value/10) instead to give a little life to the picture. */
+	  if (color_value == 0)
+	      color_value = pix_value/10;
 
-      for (j=0; j<size; j++)
-	{
+	  /* and subdivide again... */
+	  if (color_value == 0)
+	      color_value = pix_value;
+
 	  XSetForeground(XtDisplay(w), private_app_data.draw_gc,
-			 private_app_data.pixels[pic[i][j]/100]);
+			 private_app_data.pixels[color_value]);
 	  XDrawPoint (XtDisplay(w),
 		      private_app_data.big_picture,
 		      private_app_data.draw_gc,
 		      i, j);
 	}
+      fake_event.x = i;
+      fake_event.y = 0;
+      fake_event.width = 1;
+      fake_event.height = size;
+      RedrawPicture(private_app_data.bitmap, &fake_event);
     }
 
-  fake_event.x = 0;
-  fake_event.y = 0;
-  fake_event.width = size;
-  fake_event.height = size;
-  RedrawPicture(private_app_data.bitmap, &fake_event);
 }
 
 static void Syntax(argc, argv)
@@ -393,8 +395,8 @@ set_up_things(Widget w)
   private_app_data.big_picture
     = XCreatePixmap (XtDisplay(w),
 		     RootWindowOfScreen(XtScreen(w)),
-		     private_app_data.pixmap_width_in_pixels,
-		     private_app_data.pixmap_height_in_pixels,
+		     WINDOW_SIZE,
+		     WINDOW_SIZE,
 		     DefaultDepthOfScreen(XtScreen(w)));
 
   values.foreground = 1;
@@ -446,13 +448,11 @@ set_up_things(Widget w)
     }
 
 
-  XFillRectangle(XtDisplay(w),
-		 private_app_data.big_picture,
-		 private_app_data.undraw_gc,
-		 0, 0,
-		 private_app_data.pixmap_width_in_pixels,
-		 private_app_data.pixmap_height_in_pixels);
-
+  XFillRectangle (XtDisplay(w),
+		  private_app_data.big_picture,
+		  private_app_data.undraw_gc,
+		  0, 0,
+		  WINDOW_SIZE, WINDOW_SIZE);
 }
 
 /* ARGSUSED */
