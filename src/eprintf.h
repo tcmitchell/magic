@@ -1,18 +1,19 @@
-/*
- * From "The Practice of Programming".
- */
+/* Copyright (C) 1999 Lucent Technologies */
+/* eprintf.h: error wrapper functions     */
 
-/* eprintf: print error message and exit */
-void eprintf(char *, ...);
+/* ---------------------------------------------
+ * From the book _The Practice of Programming_
+ * Kernighan & Pike.
+ * --------------------------------------------- */
 
-/* emalloc: malloc and report if error. */
-char * estrdup(char *);
+#include <stdlib.h>
 
-/* emalloc: malloc and report if error. */
-void * emalloc(size_t);
+extern  void    eprintf(char *, ...);
+extern  void    weprintf(char *, ...);
+extern  char    *estrdup(char *);
+extern  void    *emalloc(size_t);
+extern  void    *erealloc(void *, size_t);
+extern  char    *progname(void);
+extern  void    setprogname(char *);
 
-/* progname: return stored name of program */
-char * progname(void);
-
-/* setprogname: set stored name of program */
-void setprogname(char *);
+#define NELEMS(a)       (sizeof(a) / sizeof(a[0]))

@@ -26,6 +26,7 @@
 
 #include <stdio.h>
 
+#include "complex.h"
 #include "mandelbrot.h"
 
 /* 
@@ -57,14 +58,37 @@
 
 #define SCROLLBARWIDTH 15
 
-typedef struct {
-	Pixmap big_picture;
-	GC draw_gc, undraw_gc; /* for drawing into the big_picture, 1-bit deep */
-	GC copy_gc;	/* for copying from pixmap into window, screen depth */
-	char *cell;  /* this is the array for printing output and keeping track of cells drawn */
-    Widget bitmap;   /* drawing surface */
-	int cur_x, cur_y;
-	Dimension pixmap_width_in_pixels, pixmap_height_in_pixels;
+char *colors[] = {
+  "violet",
+  "midnightblue",
+  "blue",
+  "green",
+  "seagreen",
+  "yellow",
+  "orange",
+  "orangered",
+  "red",
+  "black"
+};
+  
+
+enum {
+  NUM_COLORS = 10,
+  WINDOW_SIZE = 100,
+};
+
+typedef struct
+{
+  Pixmap big_picture;
+  GC draw_gc, undraw_gc; /* for drawing into the big_picture, 1-bit deep */
+  GC copy_gc;	/* for copying from pixmap into window, screen depth */
+  
+  char *cell;  /* this is the array for printing output
+		* and keeping track of cells drawn */
+  Widget bitmap;   /* drawing surface */
+  int cur_x, cur_y;
+  Dimension pixmap_width_in_pixels, pixmap_height_in_pixels;
+  Pixel pixels[NUM_COLORS];
 } PrivateAppData;
 
 /* data structure for application resources */
@@ -161,18 +185,16 @@ create_image(Widget w, XtPointer client_data, XtPointer call_data)
 {
   int i, j;			/* loop counters */
   XExposeEvent fake_event;
-  GC gc;
+  complex c;
 
-  double acorner;
-  double bcorner;
-  double extent;
-  double gap;
+  complex_t acorner;
+  complex_t bcorner;
+  complex_t extent;
+  complex_t gap;
 
   int **pic;
 
-  int size = 50;
-
-  int val, maxval, minval;
+  int size = WINDOW_SIZE;
 
   pic = make_pic(size);
 
@@ -184,54 +206,30 @@ create_image(Widget w, XtPointer client_data, XtPointer call_data)
   gap = extent / size;
 
   for (i=0; i<size; i++)
-    for (j=0; j<size; j++)
-      pic[i][j] = compute_value((gap * i) + acorner,
-				(gap * j) + bcorner);
-
-  /* Now collate the values, ignoring those == 100. */
-  maxval = 0;
-  minval = 1000;
-  for (i=0; i<size; i++)
-    for (j=0; j<size; j++)
-      {
-	val = pic[i][j];
-	if (val == 1000) continue;
-	if (val > maxval) maxval = val;
-	if (val < minval) minval = val;
-      }
-
-  /* red, orange, yellow, green, blue, indigo, violet */
-
-  printf("max: %d\nmin: %d\n", maxval, minval);
-  
-  printf("max: %d\nmin: %d\n", maxval/100, minval/100);
-
-
+    {
+      printf("computing row %d\n", i);
+      for (j=0; j<size; j++)
+	{
+	  c.r = (gap * i) + acorner;
+	  c.i = (gap * j) + bcorner;
+	  pic[i][j] = compute_value(&c);
+	}
+    }
 
   for (i=0; i<size; i++)
-    for (j=0; j<size; j++)
-      {
-	switch (pic[i][j] / 100)
-	  {
-	  case 0:
-	  case 1:
-	  case 2:
-	  case 3:
-	  case 4:
-	  case 5:
-	  case 6:
-	  case 7:
-	  case 8:
-	  case 9:
-	    gc = private_app_data.undraw_gc;
-	    break;
-	  case 10:
-	  default:
-	    gc = private_app_data.draw_gc;
-	  }
-	XDrawPoint (XtDisplay(w), private_app_data.big_picture, gc, i, j);
-      }
+    {
+      printf("drawing row %d\n", i);
 
+      for (j=0; j<size; j++)
+	{
+	  XSetForeground(XtDisplay(w), private_app_data.draw_gc,
+			 private_app_data.pixels[pic[i][j]/100]);
+	  XDrawPoint (XtDisplay(w),
+		      private_app_data.big_picture,
+		      private_app_data.draw_gc,
+		      i, j);
+	}
+    }
 
   fake_event.x = 0;
   fake_event.y = 0;
@@ -347,7 +345,7 @@ cell size must be between %d and %d pixels\n",
 		app_data.pixmap_height_in_cells);
 
     vpane = XtVaCreateManagedWidget("vpane", panedWidgetClass, topLevel,
-				    XtNwidth, 100,
+				    XtNwidth, WINDOW_SIZE,
 				    NULL);
 
     buttonbox = XtCreateManagedWidget("buttonbox", boxWidgetClass, vpane, NULL, 0);
@@ -362,8 +360,8 @@ cell size must be between %d and %d pixels\n",
 
     private_app_data.bitmap = XtVaCreateManagedWidget("bitmap", coreWidgetClass, vpane, 
 						      XtNtranslations, XtParseTranslationTable(trans),
-						      XtNwidth, 100,
-						      XtNheight, 100,
+						      XtNwidth, WINDOW_SIZE,
+						      XtNheight, WINDOW_SIZE,
 						      NULL);
 
     XtAppAddActions(app_context, window_actions, XtNumber(window_actions));
@@ -378,67 +376,80 @@ cell size must be between %d and %d pixels\n",
 void
 set_up_things(Widget w)
 {
-	XGCValues values;
-/*  	int x, y; */
-/*  	XSegment segment[MAXLINES]; */
-/*  	int n_horiz_segments, n_vert_segments; */
+  XGCValues values;
+  XColor screen_def;
+  XColor exact_def;
+  int i;
+  int result;
 
-	private_app_data.pixmap_width_in_pixels = app_data.pixmap_width_in_cells * 
-			app_data.cell_size_in_pixels;
-	private_app_data.pixmap_height_in_pixels = app_data.pixmap_height_in_cells * 
-			app_data.cell_size_in_pixels;
+  private_app_data.pixmap_width_in_pixels = app_data.pixmap_width_in_cells * 
+    app_data.cell_size_in_pixels;
+  private_app_data.pixmap_height_in_pixels = app_data.pixmap_height_in_cells * 
+    app_data.cell_size_in_pixels;
 
-	private_app_data.big_picture = XCreatePixmap(XtDisplay(w),
-	    RootWindowOfScreen(XtScreen(w)),
-	    private_app_data.pixmap_width_in_pixels, private_app_data.pixmap_height_in_pixels, 1);
+  private_app_data.big_picture
+    = XCreatePixmap (XtDisplay(w),
+		     RootWindowOfScreen(XtScreen(w)),
+		     private_app_data.pixmap_width_in_pixels,
+		     private_app_data.pixmap_height_in_pixels,
+		     DefaultDepthOfScreen(XtScreen(w)));
 
-	values.foreground = 1;
-	values.background = 0;
-	values.dashes = 1;
-	values.dash_offset = 0;
-	values.line_style = LineOnOffDash;
+  values.foreground = 1;
+  values.background = 0;
+  values.dashes = 1;
+  values.dash_offset = 0;
+  values.line_style = LineOnOffDash;
 
-	private_app_data.draw_gc = XCreateGC(XtDisplay(w), private_app_data.big_picture,
-	    GCForeground | GCBackground | GCDashOffset | GCDashList | GCLineStyle, &values);
+  private_app_data.draw_gc = XCreateGC(XtDisplay(w),
+				       private_app_data.big_picture,
+				       (GCForeground | GCBackground
+					| GCDashOffset | GCDashList
+					| GCLineStyle),
+				       &values);
 
-	values.foreground = 0;
-	values.background = 1;
-	private_app_data.undraw_gc = XCreateGC(XtDisplay(w), private_app_data.big_picture,
-	    GCForeground | GCBackground | GCDashOffset | GCDashList | GCLineStyle, &values);
+  values.foreground = WhitePixel(XtDisplay(w), DefaultScreen(XtDisplay(w)));
+  values.background = BlackPixel(XtDisplay(w), DefaultScreen(XtDisplay(w)));
+  private_app_data.undraw_gc = XCreateGC(XtDisplay(w),
+					 private_app_data.big_picture,
+					 (GCForeground | GCBackground
+					  | GCDashOffset | GCDashList
+					  | GCLineStyle),
+					 &values);
 
-	values.foreground = app_data.copy_fg;
-	values.background = app_data.copy_bg;
-	private_app_data.copy_gc = XCreateGC(XtDisplay(w), RootWindowOfScreen(XtScreen(w)),
-	    GCForeground | GCBackground, &values);
+  values.foreground = app_data.copy_fg;
+  values.background = app_data.copy_bg;
+  private_app_data.copy_gc = XCreateGC(XtDisplay(w),
+				       RootWindowOfScreen(XtScreen(w)),
+				       GCForeground | GCBackground,
+				       &values);
 
-	XFillRectangle(XtDisplay(w), private_app_data.big_picture, private_app_data.undraw_gc, 0, 0,
-	private_app_data.pixmap_width_in_pixels, private_app_data.pixmap_height_in_pixels);
 
-#ifdef DRAW_GRID
-	/* draw permanent grid into pixmap */
-	n_horiz_segments = app_data.pixmap_height_in_cells + 1;
-	n_vert_segments = app_data.pixmap_width_in_cells + 1;
-
-	for (x = 0; x < n_horiz_segments; x += 1) {
-		segment[x].x1 = 0;
-		segment[x].x2 = private_app_data.pixmap_width_in_pixels;
-		segment[x].y1 = app_data.cell_size_in_pixels * x;
-		segment[x].y2 = app_data.cell_size_in_pixels * x;
+  for (i=0; i<NUM_COLORS; i++)
+    {
+      result = XAllocNamedColor(XtDisplay(w),
+				DefaultColormapOfScreen(XtScreen(w)),
+				colors[i],
+				&screen_def,
+				&exact_def);
+      if (result == 0)
+	{
+	  printf("error allocating color %s\n", colors[i]);
+	  exit(0);
 	}
-
-	/* drawn only once into pixmap */
-	XDrawSegments(XtDisplay(w), private_app_data.big_picture, private_app_data.draw_gc, segment, n_horiz_segments);
-
-	for (y = 0; y < n_vert_segments; y += 1) {
-		segment[y].x1 = y * app_data.cell_size_in_pixels;
-		segment[y].x2 = y * app_data.cell_size_in_pixels;
-		segment[y].y1 = 0;
-		segment[y].y2 = private_app_data.pixmap_height_in_pixels;
+      else
+	{
+	  private_app_data.pixels[i] = screen_def.pixel;
 	}
+    }
 
-	/* drawn only once into pixmap */
-	XDrawSegments(XtDisplay(w), private_app_data.big_picture, private_app_data.draw_gc, segment, n_vert_segments);
-#endif
+
+  XFillRectangle(XtDisplay(w),
+		 private_app_data.big_picture,
+		 private_app_data.undraw_gc,
+		 0, 0,
+		 private_app_data.pixmap_width_in_pixels,
+		 private_app_data.pixmap_height_in_pixels);
+
 }
 
 /* ARGSUSED */
@@ -465,14 +476,14 @@ Cardinal *num_params;
 	height =  10000;
     }
 
-    if (DefaultDepthOfScreen(XtScreen(w)) == 1)
+/*      if (DefaultDepthOfScreen(XtScreen(w)) == 1) */
 	XCopyArea(XtDisplay(w), private_app_data.big_picture, XtWindow(w),
 		private_app_data.copy_gc, x + private_app_data.cur_x, 
 		y + private_app_data.cur_y, width, height, x, y);
-    else
-	XCopyPlane(XtDisplay(w), private_app_data.big_picture, XtWindow(w),
-		private_app_data.copy_gc, x + private_app_data.cur_x, 
-		y + private_app_data.cur_y, width, height, x, y, 1);
+/*      else */
+/*  	XCopyPlane(XtDisplay(w), private_app_data.big_picture, XtWindow(w), */
+/*  		   private_app_data.copy_gc, x + private_app_data.cur_x,  */
+/*  		   y + private_app_data.cur_y, width, height, x, y, 1); */
 }
 
 /* ARGSUSED */

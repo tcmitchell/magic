@@ -3,16 +3,26 @@
 #
 
 CFLAGS = -g -Wall 
+LDFLAGS = -L/usr/X11R6/lib
+LDLIBS = -lXaw -lXt -lm
 
-LDLIBS = -L/usr/X11/lib -lXaw -lXt -lm
 
-SRCS = mandelzoom.c eprintf.c complex.c athena.c
+UTIL_SRCS = eprintf.c
 
-OBJS = $(SRCS:.c=.o)
+MANDEL_SRCS = mandelbrot.c complex.c athena.c $(UTIL_SRCS)
+MANDEL_OBJS = $(MANDEL_SRCS:.c=.o)
 
-mandelzoom:	$(OBJS)
-	$(LINK.c) -o $@ $(OBJS) $(LDFLAGS) $(LDLIBS)
+MARKOV_SRCS = markov.c $(UTIL_SRCS)
+MARKOV_OBJS = $(MARKOV_SRCS:.c=.o)
+
+all: mandelzoom markov
+
+mandelzoom:	$(MANDEL_OBJS)
+	$(LINK.c) -o $@ $(MANDEL_OBJS) $(LDFLAGS) $(LDLIBS)
+
+markov:	$(MARKOV_OBJS)
+	$(LINK.c) -o $@ $(MARKOV_OBJS) $(LDFLAGS) $(LDLIBS)
 
 clean:
 	$(RM) *.o
-	$(RM) mandelzoom
+	$(RM) mandelzoom markov
